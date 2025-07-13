@@ -75,8 +75,7 @@ export default function OnboardingContainer() {
             business_proposal: onboardingData.proposal || null,
             estimated_share_capital: onboardingData.shareCapital || null,
             preferred_language: onboardingData.language || null,
-            notes: onboardingData.notes || null,
-            created_at: new Date().toISOString()  // if your table has this column
+            notes: onboardingData.notes || null
           }
         ]);
 
@@ -112,14 +111,13 @@ export default function OnboardingContainer() {
         estimated_employees_range: onboardingData.employeeCount || null,
         business_proposal:      onboardingData.businessProposal || null,
         notes:                  onboardingData.notes        || null,
-        created_at:             new Date().toISOString()
       };
 
       console.log('Inserting Mainland payload:', payload);
       const { data, error } = await supabase
         .from('MainlandUserInfo')
         .insert([payload]);
-
+      
       if (error) throw error;
       console.log('Mainland insert success:', data);
 

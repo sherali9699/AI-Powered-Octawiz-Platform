@@ -22,64 +22,130 @@ const SignInPage = () => {
     if (!formData.email) newErrors.email = 'Email is required';
     if (!formData.password) newErrors.password = 'Password is required';
     setErrors(newErrors);
+
     if (Object.keys(newErrors).length === 0) {
       setLoading(true);
+
+      // Admin path
       if (isAdmin) {
-        // Admin sign in using Admins table
         const { data, error } = await supabase
           .from('Admins')
           .select('*')
           .eq('email', formData.email)
           .single();
         setLoading(false);
-        if (error || !data) {
+
+        if (error || !data || data.password !== formData.password) {
           setSigninError('Invalid admin email or password.');
           return;
         }
-        if (data.password !== formData.password) {
-          setSigninError('Invalid admin email or password.');
-          return;
-        }
-        // Store admin info in localStorage
-        localStorage.setItem('admin', JSON.stringify({
-          email: data.email
-        }));
+
+        localStorage.setItem('admin', JSON.stringify({ email: data.email }));
         navigate('/admin');
         return;
       }
-      // User sign in using Users table
-      const { data, error } = await supabase
-        .from('Users')
-        .select('*')
-        .eq('email', formData.email)
-        .single();
-      setLoading(false);
-      if (error || !data) {
-        setSigninError('Invalid email or password.');
-        return;
-      }
-      if (data.password !== formData.password) {
-        setSigninError('Invalid email or password.');
-        return;
-      }
-      localStorage.setItem('user', JSON.stringify({
-        user_id: data.user_id,
-        first_name: data.first_name,
-        last_name: data.last_name,
-        email: data.email
-      }));
-      // Fetch onboarding record and check payment status
-      setLoading(true);
-      const { data: onboarding, error: onboardingError } = await supabase
-        .from('Onboarding')
-        .select('paid')
-        .eq('user_id', data.user_id)
-        .single();
-      setLoading(false);
-      if (onboarding && onboarding.paid === true) {
-        navigate('/dashboard');
-      } else {
-        navigate('/onboarding');
+
+      // User path
+      try {
+        // Step 1: Sign in with Supabase Auth
+        const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+          email: formData.email,
+          password: formData.password,
+        });
+
+        if (authError) {
+          console.error('Auth Sign-In Error:', authError);
+          setSigninError(authError.message || 'Invalid email or password');
+          setLoading(false);
+          return;
+        }
+
+        console.log('✅ Auth success:', authData.user);
+
+        const authUser = authData.user;
+
+        // Step 2: Check if user exists in Users table
+        const { data: userData, error: userError } = await supabase
+          .from('Users')
+          .select('user_id, first_name, last_name, email, role')
+          .eq('email', authUser.email)
+          .single();
+
+        let userToUse = userData;
+
+        if (userError) {
+          console.warn('⚠️ User not found in Users table:', userError?.message);
+
+          // Step 3: Insert new user in Users table
+          const insertPayload = {
+            email: authUser.email,
+            first_name: authUser.user_metadata?.first_name || '',
+            last_name: authUser.user_metadata?.last_name || '',
+            role: 'user',
+            password: null,
+            auth_user_id: authUser.id,
+          };
+
+          console.log('ℹ️ Inserting new user:', insertPayload);
+
+          const { data: insertedUser, error: insertError } = await supabase
+            .from('Users')
+            .insert([insertPayload])
+            .select('user_id, first_name, last_name, email, role')
+            .single();
+
+          if (insertError) {
+            console.error('❌ Insert Error:', insertError);
+            setSigninError('Failed to insert user into database. Please contact support.');
+            setLoading(false);
+            return;
+          }
+          // 💡 Immediately create Onboarding record
+          const { error: onboardingInsertError } = await supabase
+            .from('Onboarding')
+            .insert([{ user_id: insertedUser.user_id, paid: false }]);
+
+          if (onboardingInsertError) {
+            console.error('❌ Failed to create Onboarding record:', onboardingInsertError);
+            setSigninError('Unexpected error during onboarding setup. Please try again.');
+            setLoading(false);
+            return;
+          }
+          userToUse = insertedUser;
+        }
+
+        // Step 4: Save user to localStorage
+        localStorage.setItem('user', JSON.stringify({
+          user_id: userToUse.user_id,
+          auth_user_id: authUser.id,
+          first_name: userToUse.first_name,
+          last_name: userToUse.last_name,
+          email: userToUse.email,
+          role: userToUse.role
+        }));
+
+        console.log('✅ User saved to localStorage:', userToUse);
+
+        // Step 5: Check onboarding status
+        const { data: onboarding, error: onboardingError } = await supabase
+          .from('Onboarding')
+          .select('paid')
+          .eq('user_id', userToUse.user_id)
+          .single();
+
+        if (onboardingError) {
+          console.warn('ℹ️ Onboarding record not found. Creating new one.');
+          await supabase.from('Onboarding').insert([{ user_id: userToUse.user_id, paid: false }]);
+          navigate('/onboarding');
+          return;
+        }
+
+        navigate(onboarding?.paid ? '/dashboard' : '/onboarding');
+      } catch (err) {
+        console.error('Unexpected Signin Error:', err);
+        setSigninError('Unexpected error. Please try again.');
+      } finally {
+        setLoading(false);
       }
     }
   };

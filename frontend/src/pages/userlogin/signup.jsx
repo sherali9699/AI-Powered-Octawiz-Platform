@@ -27,63 +27,64 @@ const SignupPage = () => {
   };
 
   const handleSubmit = async (e) => {
-    e.preventDefault();
-    setSignupError('');
-    const newErrors = {};
+  e.preventDefault();
+  setSignupError('');
+  const newErrors = {};
 
-    if (!formData.firstName) newErrors.firstName = 'First name is required';
-    if (!formData.lastName) newErrors.lastName = 'Last name is required';
-    if (!formData.email) newErrors.email = 'Email is required';
-    if (formData.email !== formData.confirmEmail) newErrors.confirmEmail = 'Emails do not match';
-    if (!formData.password) newErrors.password = 'Password is required';
-    if (formData.password !== formData.confirmPassword) newErrors.confirmPassword = 'Passwords do not match';
+  if (!formData.firstName) newErrors.firstName = 'First name is required';
+  if (!formData.lastName) newErrors.lastName = 'Last name is required';
+  if (!formData.email) newErrors.email = 'Email is required';
+  if (formData.email !== formData.confirmEmail) newErrors.confirmEmail = 'Emails do not match';
+  if (!formData.password) newErrors.password = 'Password is required';
+  if (formData.password !== formData.confirmPassword) newErrors.confirmPassword = 'Passwords do not match';
 
-    setErrors(newErrors);
+  setErrors(newErrors);
 
-    if (Object.keys(newErrors).length === 0) {
-      setLoading(true);
-      // Check if user already exists with this email
-      const { data: existingUser, error: checkError } = await supabase
-        .from('Users')
-        .select('user_id')
-        .eq('email', formData.email)
-        .single();
-      if (existingUser) {
-        setSignupError('An account with this email already exists. Please use a different email.');
-        setLoading(false);
-        return;
-      }
-      // Insert user into new Users table (case-sensitive table/column names)
-      const { data, error } = await supabase.from('Users').insert([
-        {
-          first_name: formData.firstName,
-          last_name: formData.lastName,
-          email: formData.email,
-          password: formData.password, // Should be string, not bigint
-          role: 'user',
+  if (Object.keys(newErrors).length === 0) {
+    setLoading(true);
+
+    try {
+      const { data, error } = await supabase.auth.signUp({
+        email: formData.email,
+        password: formData.password,
+        options: {
+          data: {
+            first_name: formData.firstName,
+            last_name: formData.lastName,
+            role: formData.role,
+          },
+          emailRedirectTo: `${window.location.origin}/auth-callback`,
         },
-      ]).select('user_id').single();
-      if (!error && data && data.user_id) {
-        // REMOVE: Do not create onboarding row here
-        // const { error: onboardingError } = await supabase.from('Onboarding').insert([{ user_id: data.user_id }]);
-        // if (onboardingError) {
-        //   setSignupError('Onboarding row creation failed: ' + onboardingError.message);
-        //   setLoading(false);
-        //   return;
-        // }
-      }
+      });
+
       setLoading(false);
+
       if (error) {
-        if (error.code === '23505' || error.message.includes('duplicate')) {
-          setSignupError('Email already exists. Please use a different email.');
+        if (error.message.includes('already registered')) {
+          setSignupError('An account with this email already exists.');
+          const goToSignIn = window.confirm(
+            'An account with this email already exists. Would you like to sign in instead?'
+          );
+          if (goToSignIn) navigate('/signin');
         } else {
           setSignupError(error.message);
         }
-      } else {
+        return;
+      }
+
+      if (data?.user) {
+        alert('Verification email sent! Please check your inbox.');
         navigate('/signin');
       }
+    } catch (err) {
+      console.error(err);
+      setSignupError('Something went wrong. Please try again.');
+      setLoading(false);
     }
-  };
+  }
+};
+
+
 
   return (
     <div className="signup container py-5">
