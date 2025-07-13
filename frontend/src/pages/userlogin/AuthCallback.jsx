@@ -16,15 +16,13 @@ const AuthCallback = () => {
           return;
         }
 
-        const { data: existingUser } = await supabase
+        let { data: userData, error: userError } = await supabase
           .from('Users')
           .select('*')
           .eq('email', user.email)
           .maybeSingle();
 
-        let userData = existingUser;
-
-        if (!existingUser) {
+        if (!userData || userError) {
           const { data: newUser, error: insertError } = await supabase
             .from('Users')
             .insert([{
@@ -39,6 +37,8 @@ const AuthCallback = () => {
 
           if (insertError) throw insertError;
           userData = newUser;
+
+          await supabase.from('Onboarding').insert([{ user_id: userData.user_id, paid: false }]);
         }
 
         localStorage.setItem('user', JSON.stringify({
@@ -52,18 +52,11 @@ const AuthCallback = () => {
 
         const { data: onboarding } = await supabase
           .from('Onboarding')
-          .select('*')
+          .select('paid')
           .eq('user_id', userData.user_id)
           .maybeSingle();
 
-        if (!onboarding) {
-          await supabase.from('Onboarding').insert([{
-            user_id: userData.user_id,
-            paid: false
-          }]);
-        }
-
-        navigate('/onboarding');
+        navigate(onboarding?.paid ? '/dashboard' : '/onboarding');
       } catch (error) {
         console.error('AuthCallback error:', error);
         alert('Login failed. Try again.');

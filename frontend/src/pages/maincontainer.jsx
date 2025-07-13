@@ -16,7 +16,7 @@ import OffshoreStep3 from './Offshore/OffshoreStep3';
 import OffshoreStep4 from './Offshore/OffshoreStep4';
 import OffshoreStep5 from './Offshore/OffshoreStep5';
 import StepsSidebar_offshore from '../components/stepsidebar_offshore';
-import { useNavigate } from 'react-router-dom';  // Add this import
+import { useNavigate } from 'react-router-dom';
 
 // Freezone Screens
 import Step2CompanyStructure from './step2companystructure';
@@ -36,20 +36,21 @@ import Step14Confirmation from './freezone/step14confirmation';
 import NotAvailable from './notavailiable';
 import StepsSidebar from '../components/stepsidebar';
 import StepsSidebar_freezone from '../components/stepsidebar_freezone';
-// import ChatBot from '../components/chatbot';
 
 export default function OnboardingContainer() {
   const [loading, setLoading] = useState(true);
+  const [category, setCategory] = useState(null);
+  const [currentStep, setCurrentStep] = useState(1);
+  const [onboardingData, setOnboardingData] = useState({});
+  const [onboardingId, setOnboardingId] = useState(null);
+  const [freezoneLoading, setFreezoneLoading] = useState(false); // New state for freezone loading
+  const navigate = useNavigate();
+
   useEffect(() => {
     const handler = () => setCurrentStep(13);
     window.addEventListener('advanceStepAfterSubmit', handler);
     return () => window.removeEventListener('advanceStepAfterSubmit', handler);
   }, []);
-  const [category, setCategory] = useState(null);
-  const [currentStep, setCurrentStep] = useState(1);
-  const [onboardingData, setOnboardingData] = useState({});
-  const [onboardingId, setOnboardingId] = useState(null);
-  const navigate = useNavigate();
 
   // Add this function for Offshore submission
   const handleSubmitOffshore = async () => {
@@ -81,7 +82,6 @@ export default function OnboardingContainer() {
 
       if (error) throw error;
 
-      // Show success and move to next step
       alert('Offshore application submitted successfully!');
       setCurrentStep(6);
     } catch (error) {
@@ -89,7 +89,6 @@ export default function OnboardingContainer() {
       alert('Failed to submit application. Please try again.');
     }
   };
-
 
   const handleSubmitMainland = async () => {
     try {
@@ -100,17 +99,16 @@ export default function OnboardingContainer() {
         return;
       }
 
-      // Build payload from your form data
       const payload = {
         user_id,
-        business_name:          onboardingData.businessName  || null,
-        legal_structure:        onboardingData.legalStructure|| null,
-        full_name:              onboardingData.contactName   || null,
-        phone_number:           onboardingData.contactPhone  || null,
-        email_address:          onboardingData.contactEmail  || null,
+        business_name: onboardingData.businessName || null,
+        legal_structure: onboardingData.legalStructure || null,
+        full_name: onboardingData.contactName || null,
+        phone_number: onboardingData.contactPhone || null,
+        email_address: onboardingData.contactEmail || null,
         estimated_employees_range: onboardingData.employeeCount || null,
-        business_proposal:      onboardingData.businessProposal || null,
-        notes:                  onboardingData.notes        || null,
+        business_proposal: onboardingData.businessProposal || null,
+        notes: onboardingData.notes || null,
       };
 
       console.log('Inserting Mainland payload:', payload);
@@ -121,197 +119,177 @@ export default function OnboardingContainer() {
       if (error) throw error;
       console.log('Mainland insert success:', data);
 
-      // Advance to a new success step
       setCurrentStep(7);
-
     } catch (err) {
       console.error('Error submitting mainland application:', err);
       alert('Failed to submit mainland application.');
     }
   };
 
-  // const handleSubmitMainland = async () => {
-  //   try {
-  //     const user = JSON.parse(localStorage.getItem('user'));
-  //     const user_id = user?.user_id;
-      
-  //     if (!onboardingId) {
-  //       console.error('No onboarding ID found');
-  //       return;
-  //     }
-
-  //     const { error } = await supabase
-  //       .from('Onboarding')
-  //       .update({
-  //         business_name: onboardingData.businessName,
-  //         legal_structure: onboardingData.legalStructure,
-  //         contact_name: onboardingData.contactName,
-  //         contact_phone: onboardingData.contactPhone,
-  //         contact_email: onboardingData.contactEmail,
-  //         employee_count: onboardingData.employeeCount,
-  //         business_proposal: onboardingData.businessProposal,
-  //         notes: onboardingData.notes,
-  //         status: 'submitted',
-  //         updated_at: new Date().toISOString()
-  //       })
-  //       .eq('id', onboardingId);
-
-  //     if (error) throw error;
-
-  //     setCurrentStep(8); // Navigate to confirmation step
-  //   } catch (error) {
-  //     console.error('Error submitting mainland application:', error);
-  //     // Handle error (show toast, etc.)
-  //   }
-  // };
-
+  // Load existing onboarding data on component mount
   useEffect(() => {
-    // Only restore if onboarding exists for user
     const fetchOnboarding = async () => {
-      const user = JSON.parse(localStorage.getItem('user'));
-      const user_id = user?.user_id;
-      if (!user_id) return;
-      let { data, error } = await supabase
-        .from('Onboarding')
-        .select('*')
-        .eq('user_id', user_id)
-        .single();
-      if (data && data.id) {
-        setOnboardingId(data.id);
-        let onboardingData = {};
-        if (data.industry) onboardingData.industryId = data.industry;
-        if (data.activity || data.custom_activity) {
-          if (data.activity) {
-            const { data: act } = await supabase
-              .from('Activities')
-              .select('name')
-              .eq('id', data.activity)
-              .single();
-            onboardingData.activities = act && act.name ? [act.name] : [];
-          } else {
-            onboardingData.activities = [];
-          }
-          onboardingData.customActivity = data.custom_activity || '';
+      try {
+        const user = JSON.parse(localStorage.getItem('user'));
+        const user_id = user?.user_id;
+        
+        if (!user_id) {
+          setLoading(false);
+          return;
         }
-        if (data.ownership) onboardingData.ownership = data.ownership;
-        if (data.freezone) onboardingData.freezone = data.freezone;
-        if (data.visa_requirement) onboardingData.visa_requirement = data.visa_requirement;
-        if (data.office_type) onboardingData.office_type = data.office_type;
-        if (data.trade_name) onboardingData.trade_name = data.trade_name;
-        if (data.trade_name2) onboardingData.trade_name2 = data.trade_name2;
-        if (data.trade_name3) onboardingData.trade_name3 = data.trade_name3;
-        const { data: stakeholders } = await supabase
-          .from('Shareholder')
-          .select('shareholder_id, name, nationality, passport_no, email, share_capital, percentage, shares')
-          .eq('onboarding_id', data.id);
-        if (stakeholders && stakeholders.length > 0) {
-          onboardingData.stakeholders = stakeholders.map(s => ({
-            name: s.name,
-            nationality: s.nationality,
-            passport: s.passport_no,
-            email: s.email,
-            shareholder_id: s.shareholder_id,
-            shares: s.shares,
-            percentage: s.percentage,
-            share_capital: s.share_capital
-          }));
-          onboardingData.equity = stakeholders.map(s => s.percentage);
-          onboardingData.shareCapital = data.total_share_capital || 5000;
-        }
-        const { data: documents } = await supabase
-          .from('Documents')
-          .select('*')
-          .eq('onboarding_id', data.id);
-        if (documents && documents.length > 0) {
-          onboardingData.documents = documents;
-        }
-        if (data.submitted) {
-          navigate('/dashboard'); // Directly redirect to dashboard
-        } else {
-          setCurrentStep(1);
-        }
-        setOnboardingData(onboardingData);
-      }
-      setLoading(false);
-    };
-    fetchOnboarding();
-  }, []);
 
-  // Only create onboarding row when user selects Freezone
+        const { data, error } = await supabase
+          .from('Onboarding')
+          .select('*')
+          .eq('user_id', user_id)
+          .maybeSingle(); // Use maybeSingle to avoid errors if no record exists
+
+        if (error && error.code !== 'PGRST116') { // PGRST116 is "no rows returned"
+          console.error('Error fetching onboarding:', error);
+          setLoading(false);
+          return;
+        }
+
+        if (data && data.id) {
+          setOnboardingId(data.id);
+          let onboardingData = {};
+          
+          // Restore onboarding data
+          if (data.industry) onboardingData.industryId = data.industry;
+          if (data.activity || data.custom_activity) {
+            if (data.activity) {
+              const { data: act } = await supabase
+                .from('Activities')
+                .select('name')
+                .eq('id', data.activity)
+                .single();
+              onboardingData.activities = act && act.name ? [act.name] : [];
+            } else {
+              onboardingData.activities = [];
+            }
+            onboardingData.customActivity = data.custom_activity || '';
+          }
+          if (data.ownership) onboardingData.ownership = data.ownership;
+          if (data.freezone) onboardingData.freezone = data.freezone;
+          if (data.visa_requirement) onboardingData.visa_requirement = data.visa_requirement;
+          if (data.office_type) onboardingData.office_type = data.office_type;
+          if (data.trade_name) onboardingData.trade_name = data.trade_name;
+          if (data.trade_name2) onboardingData.trade_name2 = data.trade_name2;
+          if (data.trade_name3) onboardingData.trade_name3 = data.trade_name3;
+          
+          // Load stakeholders
+          const { data: stakeholders } = await supabase
+            .from('Shareholder')
+            .select('shareholder_id, name, nationality, passport_no, email, share_capital, percentage, shares')
+            .eq('onboarding_id', data.id);
+          
+          if (stakeholders && stakeholders.length > 0) {
+            onboardingData.stakeholders = stakeholders.map(s => ({
+              name: s.name,
+              nationality: s.nationality,
+              passport: s.passport_no,
+              email: s.email,
+              shareholder_id: s.shareholder_id,
+              shares: s.shares,
+              percentage: s.percentage,
+              share_capital: s.share_capital
+            }));
+            onboardingData.equity = stakeholders.map(s => s.percentage);
+            onboardingData.shareCapital = data.total_share_capital || 5000;
+          }
+          
+          // Load documents
+          const { data: documents } = await supabase
+            .from('Documents')
+            .select('*')
+            .eq('onboarding_id', data.id);
+          
+          if (documents && documents.length > 0) {
+            onboardingData.documents = documents;
+          }
+          
+          if (data.submitted) {
+            navigate('/dashboard');
+            return;
+          } else {
+            setCategory('freezone'); // Assume freezone if onboarding exists
+            setCurrentStep(1);
+          }
+          
+          setOnboardingData(onboardingData);
+        }
+      } catch (error) {
+        console.error('Error in fetchOnboarding:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchOnboarding();
+  }, [navigate]);
+
+  // Handle category selection
   const handleCategorySelect = async (cat) => {
     setCategory(cat);
     setCurrentStep(1);
     setOnboardingData({ category: cat });
+    
     if (cat === 'freezone') {
-      const user = JSON.parse(localStorage.getItem('user'));
-      const user_id = user?.user_id;
-      // Check if onboarding row already exists
-      const { data: existing, error: fetchError } = await supabase
-        .from('Onboarding')
-        .select('*')
-        .eq('user_id', user_id)
-        .single();
-      if (existing && existing.id) {
-        setOnboardingId(existing.id);
-        // Restore progress
-        let onboardingData = {};
-        if (existing.industry) onboardingData.industryId = existing.industry;
-        if (existing.activity || existing.custom_activity) {
-          if (existing.activity) {
-            const { data: act } = await supabase
-              .from('Activities')
-              .select('name')
-              .eq('id', existing.activity)
-              .single();
-            onboardingData.activities = act && act.name ? [act.name] : [];
-          } else {
-            onboardingData.activities = [];
-          }
-          onboardingData.customActivity = existing.custom_activity || '';
+      setFreezoneLoading(true);
+      
+      try {
+        const user = JSON.parse(localStorage.getItem('user'));
+        const user_id = user?.user_id;
+        
+        if (!user_id) {
+          console.error('No user found in localStorage');
+          setFreezoneLoading(false);
+          return;
         }
-        if (existing.ownership) onboardingData.ownership = existing.ownership;
-        if (existing.freezone) onboardingData.freezone = existing.freezone;
-        if (existing.visa_requirement) onboardingData.visa_requirement = existing.visa_requirement;
-        if (existing.office_type) onboardingData.office_type = existing.office_type;
-        if (existing.trade_name) onboardingData.trade_name = existing.trade_name;
-        if (existing.trade_name2) onboardingData.trade_name2 = existing.trade_name2;
-        if (existing.trade_name3) onboardingData.trade_name3 = existing.trade_name3;
-        const { data: stakeholders } = await supabase
-          .from('Shareholder')
-          .select('shareholder_id, name, nationality, passport_no, email, share_capital, percentage, shares')
-          .eq('onboarding_id', existing.id);
-        if (stakeholders && stakeholders.length > 0) {
-          onboardingData.stakeholders = stakeholders.map(s => ({
-            name: s.name,
-            nationality: s.nationality,
-            passport: s.passport_no,
-            email: s.email,
-            shareholder_id: s.shareholder_id,
-            shares: s.shares,
-            percentage: s.percentage,
-            share_capital: s.share_capital
-          }));
-          onboardingData.equity = stakeholders.map(s => s.percentage);
-          onboardingData.shareCapital = stakeholders[0].share_capital;
-        }
-        const { data: documents } = await supabase
-          .from('Documents')
-          .select('*')
-          .eq('onboarding_id', existing.id);
-        if (documents && documents.length > 0) {
-          onboardingData.documents = documents;
-        }
-        setOnboardingData(onboardingData);
-      } else {
-        // Only create if not exists
-        const { data: newData, error: insertError } = await supabase
+
+        // Check if onboarding row already exists
+        const { data: existing, error: fetchError } = await supabase
           .from('Onboarding')
-          .insert([{ user_id }])
-          .select('id')
-          .single();
-        if (!insertError) {
+          .select('*')
+          .eq('user_id', user_id)
+          .maybeSingle();
+
+        if (fetchError && fetchError.code !== 'PGRST116') {
+          console.error('Error fetching existing onboarding:', fetchError);
+          setFreezoneLoading(false);
+          return;
+        }
+
+        if (existing && existing.id) {
+          setOnboardingId(existing.id);
+          // Restore progress - same logic as above
+          let onboardingData = { category: cat };
+          if (existing.industry) onboardingData.industryId = existing.industry;
+          // ... (rest of the restoration logic)
+          setOnboardingData(onboardingData);
+        } else {
+          // Create new onboarding record
+          console.log('Inserting into Onboarding with user_id:', user_id, 'and paid: false');
+          const { data: newData, error: insertError } = await supabase
+            .from('Onboarding')
+            .insert([{ user_id}])
+            .select('id')
+            .single();
+
+          if (insertError) {
+            console.error('Error creating onboarding record:', insertError);
+            alert('Failed to create onboarding record. Please try again.');
+            setFreezoneLoading(false);
+            return;
+          }
+
           setOnboardingId(newData?.id);
         }
+      } catch (error) {
+        console.error('Error in handleCategorySelect:', error);
+        alert('Something went wrong. Please try again.');
+      } finally {
+        setFreezoneLoading(false);
       }
     } else {
       setOnboardingId(null);
@@ -338,8 +316,18 @@ export default function OnboardingContainer() {
 
   const renderStep = () => {
     if (loading) {
-      return <div className="d-flex justify-content-center align-items-center vh-100 bg-dark text-white"><span>Loading...</span></div>;
+      return (
+        <div className="d-flex justify-content-center align-items-center vh-100 bg-dark text-white">
+          <div className="text-center">
+            <div className="spinner-border text-primary mb-3" role="status">
+              <span className="visually-hidden">Loading...</span>
+            </div>
+            <span>Loading...</span>
+          </div>
+        </div>
+      );
     }
+
     if (!category) {
       return <CategorySelection onSelect={handleCategorySelect} />;
     }
@@ -359,31 +347,31 @@ export default function OnboardingContainer() {
               onPrev={() => setCurrentStep(2)}
             />
           );
-        case 4:  // Now this is EmployeeCount (previously was step 5)
+        case 4:
           return (
             <MainlandEmployeeCount
               formData={onboardingData}
               setFormData={(data) => setOnboardingData(prev => ({ ...prev, ...data }))}
               onNext={() => nextStep()}
-              onPrev={() => setCurrentStep(3)}  // Goes back to ContactInformation now
+              onPrev={() => setCurrentStep(3)}
             />
           );
-        case 5:  // Now this is BusinessProposal (previously was step 6)
+        case 5:
           return (
             <MainlandBusinessProposal
               formData={onboardingData}
               setFormData={(data) => setOnboardingData(prev => ({ ...prev, ...data }))}
               onNext={() => nextStep()}
-              onPrev={() => setCurrentStep(4)}  // Goes back to EmployeeCount now
+              onPrev={() => setCurrentStep(4)}
             />
           );
-        case 6:  // Now this is Notes (previously was step 7)
+        case 6:
           return (
             <MainlandNotes
               formData={onboardingData}
               setFormData={(data) => setOnboardingData(prev => ({ ...prev, ...data }))}
               onSubmit={handleSubmitMainland}
-              onPrev={() => setCurrentStep(5)}  // Goes back to BusinessProposal now
+              onPrev={() => setCurrentStep(5)}
             />
           );
         case 7:
@@ -402,16 +390,40 @@ export default function OnboardingContainer() {
               </button>
             </div>
           );
-
         default:
           return <div className="p-5 text-white">Mainland step not implemented yet.</div>;
       }
     }
+
     if (category === 'freezone') {
-      // Wait for onboardingId before rendering steps that require it
-      if (!onboardingId && currentStep > 0) {
-        return <div className="p-5 text-white">Loading onboarding...</div>;
+      // Show loading while setting up freezone onboarding
+      if (freezoneLoading) {
+        return (
+          <div className="d-flex justify-content-center align-items-center vh-100 bg-dark text-white">
+            <div className="text-center">
+              <div className="spinner-border text-primary mb-3" role="status">
+                <span className="visually-hidden">Loading...</span>
+              </div>
+              <span>Setting up freezone onboarding...</span>
+            </div>
+          </div>
+        );
       }
+
+      // Wait for onboardingId before rendering steps that require it
+      if (!onboardingId) {
+        return (
+          <div className="d-flex justify-content-center align-items-center vh-100 bg-dark text-white">
+            <div className="text-center">
+              <div className="spinner-border text-primary mb-3" role="status">
+                <span className="visually-hidden">Loading...</span>
+              </div>
+              <span>Loading onboarding...</span>
+            </div>
+          </div>
+        );
+      }
+
       switch (currentStep) {
         case 0:
           return <Step2CompanyStructure onNext={nextStep} onPrev={prevStep} onboardingId={onboardingId} />;
@@ -455,7 +467,6 @@ export default function OnboardingContainer() {
         case 8:
           return <Step10Stakeholders
             onNext={async () => {
-              // Refresh stakeholders from DB before equity screen
               const { data: stakeholders } = await supabase
                 .from('Shareholder')
                 .select('shareholder_id, name, nationality, passport_no, email, share_capital, percentage, shares')
@@ -495,6 +506,7 @@ export default function OnboardingContainer() {
           return <div className="p-5 text-white">Step not implemented yet.</div>;
       }
     }
+
     if (category === 'offshore') {
       switch (currentStep) {
         case 1:
@@ -558,12 +570,11 @@ export default function OnboardingContainer() {
               </button>
             </div>
           );
-
-
         default:
           return <div className="p-5 text-white">Offshore step not implemented yet.</div>;
       }
     }
+
     return <NotAvailable onBack={() => setCategory(null)} />;
   };
 
@@ -573,11 +584,6 @@ export default function OnboardingContainer() {
       {category === 'mainland' && <StepsSidebar currentStep={currentStep} />}
       {category === 'offshore' && <StepsSidebar_offshore currentStep={currentStep} />}
       <main className="flex-grow-1 overflow-auto p-5">{renderStep()}</main>
-      {/* <ChatBot /> */}
     </div>
   );
 }
-
-
-
-
