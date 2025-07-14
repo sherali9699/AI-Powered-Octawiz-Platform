@@ -1,4 +1,3 @@
-// Updated signin.jsx
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
@@ -24,103 +23,110 @@ const SignInPage = () => {
     if (!formData.password) newErrors.password = 'Password is required';
     setErrors(newErrors);
 
-    if (Object.keys(newErrors).length === 0) {
-      setLoading(true);
+    if (Object.keys(newErrors).length > 0) return;
 
-      // Admin login
-      if (isAdmin) {
-        const { data, error } = await supabase
-          .from('Admins')
-          .select('*')
-          .eq('email', formData.email)
-          .single();
-        setLoading(false);
-        if (error || !data || data.password !== formData.password) {
-          setSigninError('Invalid admin email or password.');
-          return;
-        }
-        localStorage.setItem('admin', JSON.stringify({ email: data.email }));
-        navigate('/admin');
+    setLoading(true);
+
+    if (isAdmin) {
+      // Admin Login (bypass Supabase Auth)
+      const { data: admin, error } = await supabase
+        .from('Admins')
+        .select('*')
+        .eq('email', formData.email)
+        .single();
+
+      setLoading(false);
+
+      if (error || !admin || admin.password !== formData.password) {
+        setSigninError('Invalid admin email or password.');
         return;
       }
 
-      // User login
-      try {
-        const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
-          email: formData.email,
-          password: formData.password,
-        });
+      localStorage.setItem('admin', JSON.stringify({
+        email: admin.email,
+        role: 'admin'
+      }));
 
-        if (authError || !authData?.user) {
-          setSigninError(authError?.message || 'Authentication failed');
+      navigate('/admin');
+      return;
+    }
+
+    // User Login (using Supabase Auth)
+    try {
+      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+        email: formData.email,
+        password: formData.password,
+      });
+
+      if (authError || !authData?.user) {
+        setSigninError(authError?.message || 'Authentication failed');
+        setLoading(false);
+        return;
+      }
+
+      const authUser = authData.user;
+
+      // Fetch from Users table
+      let { data: userData, error: userError } = await supabase
+        .from('Users')
+        .select('user_id, first_name, last_name, email, role')
+        .eq('email', authUser.email)
+        .maybeSingle();
+
+      // If not found, insert into Users table
+      if (!userData || userError) {
+        const insertPayload = {
+          email: authUser.email,
+          first_name: authUser.user_metadata?.first_name || '',
+          last_name: authUser.user_metadata?.last_name || '',
+          role: 'user',
+          password: null,
+          auth_user_id: authUser.id,
+        };
+
+        const { data: newUser, error: insertError } = await supabase
+          .from('Users')
+          .insert([insertPayload])
+          .select('user_id, first_name, last_name, email, role')
+          .single();
+
+        if (insertError) {
+          setSigninError('Failed to save user profile. Try again later.');
           setLoading(false);
           return;
         }
 
-        const authUser = authData.user;
+        userData = newUser;
 
-        // Try to fetch from Users table
-        let { data: userData, error: userError } = await supabase
-          .from('Users')
-          .select('user_id, first_name, last_name, email, role')
-          .eq('email', authUser.email)
-          .maybeSingle();
-
-        // If not found, insert
-        if (!userData || userError) {
-          const insertPayload = {
-            email: authUser.email,
-            first_name: authUser.user_metadata?.first_name || '',
-            last_name: authUser.user_metadata?.last_name || '',
-            role: 'user',
-            password: null,
-            auth_user_id: authUser.id,
-          };
-
-          const { data: newUser, error: insertError } = await supabase
-            .from('Users')
-            .insert([insertPayload])
-            .select('user_id, first_name, last_name, email, role')
-            .single();
-
-          if (insertError) {
-            setSigninError('Failed to save user profile. Try again later.');
-            setLoading(false);
-            return;
-          }
-
-          userData = newUser;
-
-          // Create Onboarding record
-          await supabase
-            .from('Onboarding')
-            .insert([{ user_id: userData.user_id, paid: false }]);
-        }
-
-        // Save to localStorage
-        localStorage.setItem('user', JSON.stringify({
-          user_id: userData.user_id,
-          auth_user_id: authUser.id,
-          first_name: userData.first_name,
-          last_name: userData.last_name,
-          email: userData.email,
-          role: userData.role
-        }));
-
-        // Check Onboarding
-        const { data: onboarding } = await supabase
+        // Create Onboarding record
+        await supabase
           .from('Onboarding')
-          .select('paid')
-          .eq('user_id', userData.user_id)
-          .maybeSingle();
-
-        navigate(onboarding?.paid ? '/dashboard' : '/onboarding');
-      } catch (err) {
-        console.error(err);
-        setSigninError('Unexpected error. Try again.');
-      } finally {
-        setLoading(false);
+          .insert([{ user_id: userData.user_id, paid: false }]);
       }
+
+      // Save to localStorage
+      localStorage.setItem('user', JSON.stringify({
+        user_id: userData.user_id,
+        auth_user_id: authUser.id,
+        first_name: userData.first_name,
+        last_name: userData.last_name,
+        email: userData.email,
+        role: userData.role
+      }));
+
+      // Redirect based on onboarding status
+      const { data: onboarding } = await supabase
+        .from('Onboarding')
+        .select('paid')
+        .eq('user_id', userData.user_id)
+        .maybeSingle();
+
+      navigate(onboarding?.paid ? '/dashboard' : '/onboarding');
+    } catch (err) {
+      console.error(err);
+      setSigninError('Unexpected error. Try again.');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -146,6 +152,7 @@ const SignInPage = () => {
             />
             {errors.email && <div className="invalid-feedback">{errors.email}</div>}
           </div>
+
           <div className="mb-2">
             <label htmlFor="password" className="form-label">Password</label>
             <input
@@ -159,6 +166,7 @@ const SignInPage = () => {
             />
             {errors.password && <div className="invalid-feedback">{errors.password}</div>}
           </div>
+
           <div className="form-check mb-3">
             <input
               className="form-check-input"
@@ -171,6 +179,7 @@ const SignInPage = () => {
               Sign in as Admin
             </label>
           </div>
+
           <button type="submit" className="btn btn-primary w-100" disabled={loading}>
             {loading ? 'Signing in...' : 'Sign In'}
           </button>
