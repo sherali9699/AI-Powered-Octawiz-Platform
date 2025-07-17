@@ -601,6 +601,42 @@ input.form-control:focus {
   border: 1px solid var(--color-gray);
 }
 
+@keyframes dot-blink {
+  0%, 20% {
+    opacity: 0.2;
+  }
+  40%, 60% {
+    opacity: 1;
+  }
+  80%, 100% {
+    opacity: 0.2;
+  }
+}
+
+/* loading dots animation */
+
+.loading-dots {
+  display: inline-flex;
+  align-items: center;
+}
+
+.loading-dots .dot {
+  font-size: var(--font-lg);
+  animation: dot-blink 1.4s infinite;
+}
+
+.loading-dots .dot:nth-child(1) {
+  animation-delay: 0s;
+}
+
+.loading-dots .dot:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.loading-dots .dot:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
 /* === Attention Animation for Chatbot Toggle Button === */
 
 @keyframes pulse-chatbot {
